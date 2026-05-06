@@ -1525,7 +1525,9 @@ function GoogleClientIdModal({ initial, onCancel, onConfirm }) {
             autoFocus
           />
           <div style={{ fontSize: 11, color: "var(--muted-2)", marginTop: 6, lineHeight: 1.5 }}>
-            ".apps.googleusercontent.com"으로 끝나는 형식이어야 합니다. 입력값은 이 브라우저에만 저장됩니다.
+            ".apps.googleusercontent.com"으로 끝나는 형식이어야 합니다.<br/>
+            Google Cloud Console → Credentials → Authorized JavaScript origins에<br/>
+            <strong style={{color:"var(--ink)"}}>https://part-time-job-time-calculator.vercel.app</strong> 을 추가해주세요.
           </div>
         </div>
         <div className="modal-actions">
