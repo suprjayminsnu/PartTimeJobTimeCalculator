@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/알바 시간 계산기.html" }
+  ]
+}
