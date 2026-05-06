@@ -824,162 +824,124 @@
 <body>
   <div id="root"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
   <script type="text/babel" data-presets="react">
-
 const { useState, useEffect, useMemo, useRef } = React;
+const { createClient } = supabase;
 
-/* ---------- helpers ---------- */
-const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-const KO_DOW = ["일", "월", "화", "수", "목", "금", "토"];
+/* ─── Supabase ─── */
+const sb = createClient(
+  'https://coeydpgwziurifvmpyoh.supabase.co',
+  'sb_publishable_pEKUXTXRAbFpTFT1uZVVYw_X0cPH4XH'
+);
 
-/* ---------- auth helpers ---------- */
-const USERS_KEY = "ptj-users-v1";
-const SESSION_KEY = "ptj-session-v1";
-const GOOGLE_CLIENT_KEY = "ptj-google-client-id-v1";
-const GOOGLE_CLIENT_ID_DEFAULT = "511683958605-1pl4tntgu2p2ooab33cb0n52dmgsr1t2.apps.googleusercontent.com";
-
-async function hashPassword(pw) {
-  const enc = new TextEncoder().encode(pw + "::ptj-salt");
-  const buf = await crypto.subtle.digest("SHA-256", enc);
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-function loadUsers() {
-  try { return JSON.parse(localStorage.getItem(USERS_KEY) || "{}"); }
-  catch { return {}; }
-}
-function saveUsers(u) { localStorage.setItem(USERS_KEY, JSON.stringify(u)); }
-function loadSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); }
-  catch { return null; }
-}
-function saveSession(s) {
-  if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
-  else localStorage.removeItem(SESSION_KEY);
-}
-function decodeJwt(token) {
-  try {
-    const payload = token.split(".")[1];
-    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(decodeURIComponent(escape(json)));
-  } catch { return null; }
-}
-function loadGoogleScript() {
-  return new Promise((resolve, reject) => {
-    if (window.google && window.google.accounts) return resolve(window.google);
-    const existing = document.getElementById("g-id-script");
-    if (existing) {
-      existing.addEventListener("load", () => resolve(window.google));
-      return;
-    }
-    const s = document.createElement("script");
-    s.id = "g-id-script";
-    s.src = "https://accounts.google.com/gsi/client";
-    s.async = true;
-    s.defer = true;
-    s.onload = () => resolve(window.google);
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
-}
-
-const fmtKey = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-const pad2 = (n) => String(n).padStart(2, "0");
-const formatWon = (n) => {
-  if (!isFinite(n)) return "0";
-  return Math.round(n).toLocaleString("ko-KR");
-};
+/* ─── Helpers ─── */
+const WEEKDAYS = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+const KO_DOW = ["일","월","화","수","목","금","토"];
+const fmtKey = (y, m, d) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+const pad2 = n => String(n).padStart(2, '0');
+const formatWon = n => { if (!isFinite(n)) return '0'; return Math.round(n).toLocaleString('ko-KR'); };
 const minutesBetween = (start, end) => {
-  // start, end as "HH:MM"
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-  let s = sh * 60 + sm;
-  let e = eh * 60 + em;
-  if (e <= s) e += 24 * 60; // overnight
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  let s = sh*60+sm, e = eh*60+em;
+  if (e <= s) e += 24*60;
   return e - s;
 };
-const formatHours = (mins) => {
-  if (mins <= 0) return { h: 0, m: 0, decimal: 0 };
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return { h, m, decimal: mins / 60 };
-};
 
-const SHIFTS_PREFIX = "ptj-shifts-v2:";
-const WAGE_PREFIX = "ptj-wage-v2:";
+/* ─── Icons ─── */
+const ChevronLeft = () => <svg className="ic" viewBox="0 0 24 24"><polyline points="15 6 9 12 15 18"/></svg>;
+const ChevronRight = () => <svg className="ic" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>;
+const CloseIcon = () => <svg className="ic" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>;
 
-/* ---------- icons ---------- */
-const ChevronLeft = () =>
-<svg className="ic" viewBox="0 0 24 24"><polyline points="15 6 9 12 15 18" /></svg>;
-
-const ChevronRight = () =>
-<svg className="ic" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18" /></svg>;
-
-const CloseIcon = () =>
-<svg className="ic" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>;
-
-
-/* ---------- Root: gates Auth vs Calendar ---------- */
+/* ─── Root ─── */
 function Root() {
-  const [session, setSession] = useState(() => loadSession());
-  const onAuth = (s) => { saveSession(s); setSession(s); };
-  const onLogout = () => { saveSession(null); setSession(null); };
-  if (!session) return <AuthScreen onAuth={onAuth} />;
-  return <App session={session} onLogout={onLogout} />;
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    sb.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_e, session) => {
+      setSession(session);
+      setLoading(false);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) return (
+    <div style={{display:'grid',placeItems:'center',minHeight:'100vh',fontSize:14,color:'var(--muted)'}}>
+      불러오는 중...
+    </div>
+  );
+  if (!session) return <AuthScreen />;
+
+  const user = session.user;
+  const userSession = {
+    userId: user.id,
+    email: user.email,
+    name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0],
+    picture: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+    provider: user.app_metadata?.provider || 'email',
+  };
+  return <App session={userSession} onLogout={() => sb.auth.signOut()} />;
 }
 
-/* ---------- App ---------- */
+/* ─── App ─── */
 function App({ session, onLogout }) {
   const today = new Date();
-  const SHIFTS_KEY = SHIFTS_PREFIX + session.userId;
-  const WAGE_KEY = WAGE_PREFIX + session.userId;
-
   const [view, setView] = useState({ y: today.getFullYear(), m: today.getMonth() });
-  const [shifts, setShifts] = useState(() => {
-    try {return JSON.parse(localStorage.getItem(SHIFTS_KEY) || "{}");}
-    catch {return {};}
-  });
-  const [wage, setWage] = useState(() => {
-    const v = localStorage.getItem(WAGE_KEY);
-    return v ? Number(v) : 10030; // 2026 가정 최저시급 placeholder
-  });
-  const [modal, setModal] = useState(null); // { y, m, d }
+  const [shifts, setShifts] = useState({});
+  const [wage, setWage] = useState(10030);
+  const [modal, setModal] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
+  const wageTimerRef = useRef(null);
 
   useEffect(() => {
-    localStorage.setItem(SHIFTS_KEY, JSON.stringify(shifts));
-  }, [shifts, SHIFTS_KEY]);
-  useEffect(() => {
-    localStorage.setItem(WAGE_KEY, String(wage || 0));
-  }, [wage, WAGE_KEY]);
+    let cancelled = false;
+    (async () => {
+      setDataLoading(true);
+      const [{ data: shiftsData }, { data: settingsData }] = await Promise.all([
+        sb.from('shifts').select('date,start_time,end_time,break_min').eq('user_id', session.userId),
+        sb.from('user_settings').select('wage').eq('user_id', session.userId).maybeSingle(),
+      ]);
+      if (cancelled) return;
+      if (shiftsData) {
+        const map = {};
+        shiftsData.forEach(s => { map[s.date] = { start: s.start_time, end: s.end_time, breakMin: s.break_min }; });
+        setShifts(map);
+      }
+      if (settingsData?.wage != null) setWage(settingsData.wage);
+      setDataLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [session.userId]);
 
   const monthMatrix = useMemo(() => {
     const first = new Date(view.y, view.m, 1);
-    const startDow = first.getDay(); // 0 sun
+    const startDow = first.getDay();
     const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
     const prevDays = new Date(view.y, view.m, 0).getDate();
     const cells = [];
-    // leading
     for (let i = startDow - 1; i >= 0; i--) {
       cells.push({ y: view.m === 0 ? view.y - 1 : view.y, m: view.m === 0 ? 11 : view.m - 1, d: prevDays - i, muted: true });
     }
     for (let d = 1; d <= daysInMonth; d++) {
       cells.push({ y: view.y, m: view.m, d, muted: false });
     }
-    while (cells.length % 7 !== 0 || cells.length < 42) {
+    while (cells.length < 42) {
       const last = cells[cells.length - 1];
-      let nd = last.d + 1;
-      let nm = last.m,ny = last.y;
+      let nd = last.d + 1, nm = last.m, ny = last.y;
       const dim = new Date(ny, nm + 1, 0).getDate();
-      if (last.muted && last.m !== view.m) {
-
-        // continue muted following only after current month done
-      }if (nd > dim) {nd = 1;nm += 1;if (nm > 11) {nm = 0;ny += 1;}}
+      if (nd > dim) { nd = 1; nm += 1; if (nm > 11) { nm = 0; ny += 1; } }
       cells.push({ y: ny, m: nm, d: nd, muted: nm !== view.m });
-      if (cells.length >= 42) break;
     }
     return cells;
   }, [view]);
@@ -987,549 +949,257 @@ function App({ session, onLogout }) {
   const monthShifts = useMemo(() => {
     const list = [];
     Object.entries(shifts).forEach(([key, val]) => {
-      const [yy, mm] = key.split("-").map(Number);
+      const [yy, mm] = key.split('-').map(Number);
       if (yy === view.y && mm === view.m + 1) list.push({ key, ...val });
     });
     return list;
   }, [shifts, view]);
 
   const totals = useMemo(() => {
-    let totalMin = 0;
-    let days = 0;
-    monthShifts.forEach((s) => {
+    let totalMin = 0, days = 0;
+    monthShifts.forEach(s => {
       const m = minutesBetween(s.start, s.end) - (s.breakMin || 0);
-      if (m > 0) {totalMin += m;days += 1;}
+      if (m > 0) { totalMin += m; days++; }
     });
     const totalHoursDecimal = totalMin / 60;
     const grossPay = totalHoursDecimal * (wage || 0);
-    const tax = grossPay * 0.033; // 3.3% 사업소득세
-    const netPay = grossPay - tax;
-    return {
-      totalMin,
-      totalHoursDecimal,
-      totalH: Math.floor(totalMin / 60),
-      totalM: totalMin % 60,
-      days,
-      grossPay,
-      tax,
-      netPay
-    };
+    const tax = grossPay * 0.033;
+    return { totalMin, totalHoursDecimal, totalH: Math.floor(totalMin/60), totalM: totalMin%60, days, grossPay, tax, netPay: grossPay - tax };
   }, [monthShifts, wage]);
 
   const goToday = () => setView({ y: today.getFullYear(), m: today.getMonth() });
-  const prevMonth = () => setView((v) => v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 });
-  const nextMonth = () => setView((v) => v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 });
+  const prevMonth = () => setView(v => v.m === 0 ? { y: v.y-1, m: 11 } : { y: v.y, m: v.m-1 });
+  const nextMonth = () => setView(v => v.m === 11 ? { y: v.y+1, m: 0 } : { y: v.y, m: v.m+1 });
 
-  const openCell = (cell) => setModal({ y: cell.y, m: cell.m, d: cell.d });
+  const openCell = cell => setModal({ y: cell.y, m: cell.m, d: cell.d });
   const closeModal = () => setModal(null);
 
-  const saveShift = (key, payload) => {
-    setShifts((prev) => ({ ...prev, [key]: payload }));
+  const saveShift = async (key, payload) => {
+    const { error } = await sb.from('shifts').upsert({
+      user_id: session.userId, date: key,
+      start_time: payload.start, end_time: payload.end, break_min: payload.breakMin,
+    }, { onConflict: 'user_id,date' });
+    if (!error) setShifts(prev => ({ ...prev, [key]: payload }));
   };
-  const deleteShift = (key) => {
-    setShifts((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
+
+  const deleteShift = async (key) => {
+    const { error } = await sb.from('shifts').delete()
+      .eq('user_id', session.userId).eq('date', key);
+    if (!error) setShifts(prev => { const n = { ...prev }; delete n[key]; return n; });
+  };
+
+  const handleWageChange = newWage => {
+    setWage(newWage);
+    clearTimeout(wageTimerRef.current);
+    wageTimerRef.current = setTimeout(() => {
+      sb.from('user_settings').upsert({ user_id: session.userId, wage: newWage }, { onConflict: 'user_id' });
+    }, 600);
   };
 
   return (
     <div className="app">
-          <div className="topbar">
-            <div className="brand">
-              <div className="brand-mark">⌗</div>
-              <div className="brand-name">알바 시간 계산기</div>
-            </div>
-            <UserChip session={session} open={menuOpen} setOpen={setMenuOpen} onLogout={onLogout} />
-          </div>
-
-          <Calendar
-        view={view}
-        today={today}
-        cells={monthMatrix}
-        shifts={shifts}
-        wage={wage}
-        onPrev={prevMonth}
-        onNext={nextMonth}
-        onToday={goToday}
-        onCellClick={openCell} />
-      
-
-          <Summary totals={totals} wage={wage} setWage={setWage} view={view} />
-
-          <div className="footer-note">데이터는 이 브라우저에 자동 저장됩니다 · LOCAL ONLY</div>
-
-          {modal &&
-      <ShiftModal
-        key={fmtKey(modal.y, modal.m, modal.d)}
-        ymd={modal}
-        existing={shifts[fmtKey(modal.y, modal.m, modal.d)]}
-        wage={wage}
-        onClose={closeModal}
-        onSave={(payload) => {saveShift(fmtKey(modal.y, modal.m, modal.d), payload);closeModal();}}
-        onDelete={() => {deleteShift(fmtKey(modal.y, modal.m, modal.d));closeModal();}} />
-
-      }
-        </div>);
-
-}
-
-/* ---------- Calendar ---------- */
-function Calendar({ view, today, cells, shifts, wage, onPrev, onNext, onToday, onCellClick }) {
-  return (
-    <div className="calendar-card" data-screen-label="Calendar">
-          <div className="cal-header">
-            <div className="cal-title">
-              <div className="cal-year">{view.y}</div>
-              <div className="cal-month">
-                {["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"][view.m]}
-                <span className="month-num">/ {pad2(view.m + 1)}</span>
-              </div>
-            </div>
-            <div className="cal-controls">
-              <button className="today-btn" onClick={onToday}>오늘</button>
-              <button className="nav-btn" onClick={onPrev} aria-label="이전 달"><ChevronLeft /></button>
-              <button className="nav-btn" onClick={onNext} aria-label="다음 달"><ChevronRight /></button>
-            </div>
-          </div>
-
-          <div className="weekday-row">
-            {WEEKDAYS.map((w, i) =>
-        <div key={w} className={`weekday ${i === 0 ? "sun" : ""} ${i === 6 ? "sat" : ""}`}>{w}</div>
-        )}
-          </div>
-
-          <div className="day-grid">
-            {cells.map((c, i) => {
-          const dow = new Date(c.y, c.m, c.d).getDay();
-          const key = fmtKey(c.y, c.m, c.d);
-          const shift = shifts[key];
-          const isToday = c.y === today.getFullYear() && c.m === today.getMonth() && c.d === today.getDate();
-          const cls = [
-          "day-cell",
-          c.muted ? "muted" : "",
-          isToday ? "today" : "",
-          shift ? "has-shift" : "",
-          dow === 0 ? "sun" : "",
-          dow === 6 ? "sat" : ""].
-          filter(Boolean).join(" ");
-
-          return (
-            <button key={i} className={cls} onClick={() => onCellClick(c)}>
-                  <div className="day-num">{c.d}</div>
-                  {shift ?
-              <div className="shift-pill">
-                      <div className="shift-time">{shift.start} – {shift.end}</div>
-                      <div className="shift-hours">
-                        <span className="hh">{formatShiftHours(shift)}</span>
-                        {wage > 0 && <span className="pay">₩{formatWon(computeMinutes(shift) / 60 * wage)}</span>}
-                      </div>
-                    </div> :
-              null}
-                  {!shift && !c.muted && <div className="add-hint">+</div>}
-                </button>);
-
-        })}
-          </div>
-        </div>);
-
-}
-
-function computeMinutes(s) {
-  return Math.max(0, minutesBetween(s.start, s.end) - (s.breakMin || 0));
-}
-function formatShiftHours(s) {
-  const m = computeMinutes(s);
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  if (mm === 0) return `${h}시간`;
-  return `${h}시간 ${mm}분`;
-}
-
-/* ---------- Summary ---------- */
-function Summary({ totals, wage, setWage, view }) {
-  const monthLabel = `${view.y}.${pad2(view.m + 1)}`;
-  return (
-    <div className="summary" data-screen-label="Monthly Summary">
-          <div className="sum-block">
-            <div className="sum-label">{monthLabel} 합계</div>
-            <div className="sum-value">
-              <span className="num-mono">{totals.totalH}</span>
-              <span className="unit">시간</span>
-              {totals.totalM > 0 && <>
-                <span className="num-mono" style={{ marginLeft: 8 }}>{totals.totalM}</span>
-                <span className="unit">분</span>
-              </>}
-            </div>
-            <div className="sum-sub">{totals.totalHoursDecimal.toFixed(2)} h · 소수 표기</div>
-          </div>
-
-          <div className="sum-block">
-            <div className="sum-label">근무 일수</div>
-            <div className="sum-value">
-              <span className="num-mono">{totals.days}</span>
-              <span className="unit">일</span>
-            </div>
-            <div className="sum-sub">{totals.days > 0 ? `평균 ${(totals.totalHoursDecimal / totals.days).toFixed(1)} h/일` : "기록 없음"}</div>
-          </div>
-
-          <div className="sum-block">
-            <div className="sum-label">시급</div>
-            <div className="wage-input-wrap">
-              <input
-            className="wage-input"
-            type="text"
-            inputMode="numeric"
-            value={wage ? wage.toLocaleString("ko-KR") : ""}
-            onChange={(e) => {
-              const raw = e.target.value.replace(/[^0-9]/g, "");
-              setWage(raw ? Number(raw) : 0);
-            }}
-            placeholder="0" />
-          
-              <span className="wage-suffix">원</span>
-            </div>
-            <div className="sum-sub">시간당 단가</div>
-          </div>
-
-          <div className="sum-block" style={{ gridColumn: "span 2" }}>
-            <div className="sum-label">예상 실수령액 (세후 3.3%)</div>
-            <div className="sum-value">
-              <span style={{ color: "var(--muted-2)", fontWeight: 500, marginRight: 4 }}>₩</span>
-              <span className="num-mono">{formatWon(totals.netPay)}</span>
-            </div>
-            <div className="sum-sub">
-              세전 ₩{formatWon(totals.grossPay)} − 세금 ₩{formatWon(totals.tax)}
-            </div>
-          </div>
-        </div>);
-
-}
-
-/* ---------- Modal ---------- */
-function ShiftModal({ ymd, existing, wage, onClose, onSave, onDelete }) {
-  const [start, setStart] = useState(existing?.start || "09:00");
-  const [end, setEnd] = useState(existing?.end || "18:00");
-  const [breakMin, setBreakMin] = useState(existing?.breakMin ?? 60);
-
-  const dateObj = new Date(ymd.y, ymd.m, ymd.d);
-  const dow = KO_DOW[dateObj.getDay()];
-
-  const escRef = useRef();
-  useEffect(() => {
-    const onKey = (e) => {if (e.key === "Escape") onClose();};
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const workMin = Math.max(0, minutesBetween(start, end) - (Number(breakMin) || 0));
-  const workH = Math.floor(workMin / 60);
-  const workMM = workMin % 60;
-  const grossPay = workMin / 60 * (wage || 0);
-  const netPay = grossPay * (1 - 0.033);
-  const valid = workMin > 0;
-
-  const submit = () => {
-    if (!valid) return;
-    onSave({ start, end, breakMin: Number(breakMin) || 0 });
-  };
-
-  const onBackdrop = (e) => {if (e.target === e.currentTarget) onClose();};
-
-  return (
-    <div className="modal-backdrop" onMouseDown={onBackdrop}>
-          <div className="modal" role="dialog" aria-modal="true">
-            <div className="modal-head">
-              <div>
-                <div className="modal-date">
-                  {ymd.m + 1}월 {ymd.d}일
-                  <span className="dow">{dow}요일</span>
-                </div>
-                <div className="modal-sub">{ymd.y}.{pad2(ymd.m + 1)}.{pad2(ymd.d)}</div>
-              </div>
-              <button className="icon-btn" onClick={onClose} aria-label="닫기"><CloseIcon /></button>
-            </div>
-
-            <div className="field-row">
-              <div className="field">
-                <div className="field-label">출근</div>
-                <input
-              className="time-input"
-              type="time"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              step="300" />
-            
-              </div>
-              <div className="field">
-                <div className="field-label">퇴근</div>
-                <input
-              className="time-input"
-              type="time"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              step="300" />
-            
-              </div>
-            </div>
-
-            <div className="field">
-              <div className="field-label">휴게시간 (분)</div>
-              <input
-            className="break-input"
-            type="number"
-            min="0"
-            step="5"
-            value={breakMin}
-            onChange={(e) => setBreakMin(e.target.value === "" ? "" : Number(e.target.value))}
-            placeholder="0" />
-          
-            </div>
-
-            <div className="preview-card">
-              <div>
-                <div className="pv-label">근무 시간</div>
-                <div className="pv-pay">{wage > 0 ? `₩${formatWon(netPay)} 실수령 (세후 3.3%)` : "시급을 입력하세요"}</div>
-              </div>
-              <div className="pv-val">
-                {valid ? workMM === 0 ? `${workH}h` : `${workH}h ${workMM}m` : "—"}
-              </div>
-            </div>
-
-            <div className="modal-actions">
-              <div>
-                {existing &&
-            <button className="btn danger" onClick={onDelete}>삭제</button>
-            }
-              </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button className="btn ghost" onClick={onClose}>취소</button>
-                <button className="btn" onClick={submit} disabled={!valid} style={!valid ? { opacity: 0.4, cursor: "not-allowed" } : {}}>
-                  {existing ? "수정" : "저장"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>);
-
-}
-
-/* ---------- Auth screen ---------- */
-function AuthScreen({ onAuth }) {
-  const [mode, setMode] = useState("login"); // login | signup
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [showGoogleModal, setShowGoogleModal] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError("");
-    if (!email || !password) { setError("이메일과 비밀번호를 입력해주세요."); return; }
-    if (mode === "signup" && password.length < 6) { setError("비밀번호는 6자 이상이어야 합니다."); return; }
-    setLoading(true);
-    try {
-      const users = loadUsers();
-      const key = "email:" + email.toLowerCase();
-      if (mode === "signup") {
-        if (users[key]) { setError("이미 가입된 이메일입니다."); setLoading(false); return; }
-        const hash = await hashPassword(password);
-        users[key] = {
-          userId: key,
-          email: email.toLowerCase(),
-          name: name || email.split("@")[0],
-          provider: "email",
-          passwordHash: hash,
-          createdAt: Date.now(),
-        };
-        saveUsers(users);
-        onAuth({ userId: key, email: users[key].email, name: users[key].name, provider: "email" });
-      } else {
-        const u = users[key];
-        if (!u) { setError("가입되지 않은 이메일입니다."); setLoading(false); return; }
-        if (u.provider !== "email") { setError("Google 계정으로 가입된 이메일입니다."); setLoading(false); return; }
-        const hash = await hashPassword(password);
-        if (u.passwordHash !== hash) { setError("비밀번호가 일치하지 않습니다."); setLoading(false); return; }
-        onAuth({ userId: u.userId, email: u.email, name: u.name, provider: "email" });
-      }
-    } catch (err) {
-      setError("오류가 발생했습니다.");
-    }
-    setLoading(false);
-  };
-
-  const onGoogleCredential = (response) => {
-    const claims = decodeJwt(response.credential);
-    if (!claims || !claims.email) { setError("Google 인증에 실패했습니다."); return; }
-    const users = loadUsers();
-    const key = "google:" + claims.sub;
-    users[key] = {
-      userId: key,
-      email: claims.email,
-      name: claims.name || claims.email.split("@")[0],
-      picture: claims.picture || null,
-      provider: "google",
-      createdAt: users[key]?.createdAt || Date.now(),
-    };
-    saveUsers(users);
-    onAuth({ userId: key, email: claims.email, name: users[key].name, picture: users[key].picture, provider: "google" });
-  };
-
-  const startGoogle = (clientId) => {
-    setShowGoogleModal(false);
-    setError("");
-    setGoogleLoading(true);
-    localStorage.setItem(GOOGLE_CLIENT_KEY, clientId);
-    loadGoogleScript().then((g) => {
-      try {
-        g.accounts.id.initialize({
-          client_id: clientId,
-          callback: (response) => { setGoogleLoading(false); onGoogleCredential(response); },
-          ux_mode: "popup",
-          cancel_on_tap_outside: false,
-        });
-        g.accounts.id.prompt((notification) => {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            const container = document.getElementById("g-btn-container");
-            if (container) {
-              container.innerHTML = "";
-              g.accounts.id.renderButton(container, {
-                type: "standard", shape: "rectangular", theme: "outline",
-                text: "signin_with", size: "large",
-                width: container.offsetWidth || 340, logo_alignment: "left",
-              });
-            }
-            setGoogleLoading(false);
-          }
-        });
-      } catch (e) {
-        setGoogleLoading(false);
-        setError("Google 초기화 실패: Client ID를 확인하고 도메인을 허용 목록에 추가했는지 확인하세요.");
-      }
-    }).catch(() => { setGoogleLoading(false); setError("Google 스크립트를 불러오지 못했습니다."); });
-  };
-
-  const handleGoogleClick = () => {
-    const stored = localStorage.getItem(GOOGLE_CLIENT_KEY) || GOOGLE_CLIENT_ID_DEFAULT;
-    startGoogle(stored);
-  };
-
-  return (
-    <div className="auth-screen">
-      <div className="auth-card">
-        <div className="auth-brand">
+      <div className="topbar">
+        <div className="brand">
           <div className="brand-mark">⌗</div>
           <div className="brand-name">알바 시간 계산기</div>
         </div>
-        <div className="auth-title">{mode === "login" ? "다시 만나서 반가워요" : "시작해볼까요"}</div>
-        <div className="auth-sub">{mode === "login" ? "이메일로 로그인하거나 Google 계정을 사용하세요." : "이메일로 가입하거나 Google 계정을 연결하세요."}</div>
-
-        <div className="auth-tabs">
-          <button className={"auth-tab " + (mode === "login" ? "active" : "")} onClick={() => { setMode("login"); setError(""); }}>로그인</button>
-          <button className={"auth-tab " + (mode === "signup" ? "active" : "")} onClick={() => { setMode("signup"); setError(""); }}>회원가입</button>
-        </div>
-
-        <form className="auth-form" onSubmit={submit}>
-          {mode === "signup" && (
-            <div className="auth-field">
-              <div className="auth-field-label">이름</div>
-              <input className="auth-input" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동" autoComplete="name" />
-            </div>
-          )}
-          <div className="auth-field">
-            <div className="auth-field-label">이메일</div>
-            <input className="auth-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" required />
-          </div>
-          <div className="auth-field">
-            <div className="auth-field-label">비밀번호</div>
-            <input className="auth-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete={mode === "login" ? "current-password" : "new-password"} required />
-          </div>
-          {error && <div className="auth-error">{error}</div>}
-          <button className="auth-submit" type="submit" disabled={loading}>
-            {loading ? "처리 중..." : (mode === "login" ? "로그인" : "가입하기")}
-          </button>
-        </form>
-
-        <div className="auth-divider">또는</div>
-
-        <button className="google-btn" onClick={handleGoogleClick} disabled={googleLoading} style={googleLoading ? {opacity:0.6,cursor:"not-allowed"} : {}}>
-          {googleLoading ? <span style={{fontSize:14}}>Google 연결 중...</span> : <>
-            <svg className="google-icon" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-            </svg>
-            Google 계정으로 계속하기
-          </>}
-        </button>
-        <div id="g-btn-container" style={{width:"100%",marginTop:8,minHeight:0}}></div>
-
-
-        <div className="auth-footnote">계정 정보는 이 브라우저에 안전하게 저장됩니다.</div>
+        <UserChip session={session} open={menuOpen} setOpen={setMenuOpen} onLogout={onLogout} />
       </div>
-
-      {showGoogleModal && (
-        <GoogleClientIdModal
-          initial={localStorage.getItem(GOOGLE_CLIENT_KEY) || ""}
-          onCancel={() => setShowGoogleModal(false)}
-          onConfirm={startGoogle}
+      {dataLoading
+        ? <div style={{marginTop:80,color:'var(--muted)',fontSize:13}}>데이터 불러오는 중...</div>
+        : <>
+            <Calendar view={view} today={today} cells={monthMatrix} shifts={shifts} wage={wage}
+              onPrev={prevMonth} onNext={nextMonth} onToday={goToday} onCellClick={openCell} />
+            <Summary totals={totals} wage={wage} setWage={handleWageChange} view={view} />
+          </>
+      }
+      <div className="footer-note">데이터는 Supabase에 안전하게 저장됩니다</div>
+      {modal && (
+        <ShiftModal
+          key={fmtKey(modal.y, modal.m, modal.d)}
+          ymd={modal}
+          existing={shifts[fmtKey(modal.y, modal.m, modal.d)]}
+          wage={wage}
+          onClose={closeModal}
+          onSave={async payload => { await saveShift(fmtKey(modal.y, modal.m, modal.d), payload); closeModal(); }}
+          onDelete={async () => { await deleteShift(fmtKey(modal.y, modal.m, modal.d)); closeModal(); }}
         />
       )}
     </div>
   );
 }
 
-/* ---------- Google Client ID modal ---------- */
-function GoogleClientIdModal({ initial, onCancel, onConfirm }) {
-  const [val, setVal] = useState(initial || "");
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onCancel(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
-  const valid = val.trim().endsWith(".apps.googleusercontent.com");
+/* ─── Calendar ─── */
+function Calendar({ view, today, cells, shifts, wage, onPrev, onNext, onToday, onCellClick }) {
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+    <div className="calendar-card">
+      <div className="cal-header">
+        <div className="cal-title">
+          <div className="cal-year">{view.y}</div>
+          <div className="cal-month">
+            {["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"][view.m]}
+            <span className="month-num">/ {pad2(view.m+1)}</span>
+          </div>
+        </div>
+        <div className="cal-controls">
+          <button className="today-btn" onClick={onToday}>오늘</button>
+          <button className="nav-btn" onClick={onPrev} aria-label="이전 달"><ChevronLeft /></button>
+          <button className="nav-btn" onClick={onNext} aria-label="다음 달"><ChevronRight /></button>
+        </div>
+      </div>
+      <div className="weekday-row">
+        {WEEKDAYS.map((w,i) => <div key={w} className={`weekday ${i===0?'sun':''} ${i===6?'sat':''}`}>{w}</div>)}
+      </div>
+      <div className="day-grid">
+        {cells.map((c, i) => {
+          const dow = new Date(c.y, c.m, c.d).getDay();
+          const key = fmtKey(c.y, c.m, c.d);
+          const shift = shifts[key];
+          const isToday = c.y === today.getFullYear() && c.m === today.getMonth() && c.d === today.getDate();
+          const cls = ["day-cell", c.muted?"muted":"", isToday?"today":"", shift?"has-shift":"", dow===0?"sun":"", dow===6?"sat":""].filter(Boolean).join(" ");
+          return (
+            <button key={i} className={cls} onClick={() => onCellClick(c)}>
+              <div className="day-num">{c.d}</div>
+              {shift && (
+                <div className="shift-pill">
+                  <div className="shift-time">{shift.start} \u2013 {shift.end}</div>
+                  <div className="shift-hours">
+                    <span className="hh">{formatShiftHours(shift)}</span>
+                    {wage > 0 && <span className="pay">\u20a9{formatWon(computeMinutes(shift)/60*wage)}</span>}
+                  </div>
+                </div>
+              )}
+              {!shift && !c.muted && <div className="add-hint">+</div>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function computeMinutes(s) { return Math.max(0, minutesBetween(s.start, s.end) - (s.breakMin || 0)); }
+function formatShiftHours(s) {
+  const m = computeMinutes(s);
+  const h = Math.floor(m/60), mm = m%60;
+  if (mm === 0) return `${h}\uc2dc\uac04`;
+  return `${h}\uc2dc\uac04 ${mm}\ubd84`;
+}
+
+/* ─── Summary ─── */
+function Summary({ totals, wage, setWage, view }) {
+  const monthLabel = `${view.y}.${pad2(view.m+1)}`;
+  return (
+    <div className="summary">
+      <div className="sum-block">
+        <div className="sum-label">{monthLabel} \ud569\uacc4</div>
+        <div className="sum-value">
+          <span className="num-mono">{totals.totalH}</span><span className="unit">\uc2dc\uac04</span>
+          {totals.totalM > 0 && <><span className="num-mono" style={{marginLeft:8}}>{totals.totalM}</span><span className="unit">\ubd84</span></>}
+        </div>
+        <div className="sum-sub">{totals.totalHoursDecimal.toFixed(2)} h \u00b7 \uc18c\uc218 \ud45c\uae30</div>
+      </div>
+      <div className="sum-block">
+        <div className="sum-label">\uadfc\ubb34 \uc77c\uc218</div>
+        <div className="sum-value"><span className="num-mono">{totals.days}</span><span className="unit">\uc77c</span></div>
+        <div className="sum-sub">{totals.days > 0 ? `\ud3c9\uade0 ${(totals.totalHoursDecimal/totals.days).toFixed(1)} h/\uc77c` : '\uae30\ub85d \uc5c6\uc74c'}</div>
+      </div>
+      <div className="sum-block">
+        <div className="sum-label">\uc2dc\uae09</div>
+        <div className="wage-input-wrap">
+          <input className="wage-input" type="text" inputMode="numeric"
+            value={wage ? wage.toLocaleString('ko-KR') : ''}
+            onChange={e => { const raw = e.target.value.replace(/[^0-9]/g,''); setWage(raw ? Number(raw) : 0); }}
+            placeholder="0" />
+          <span className="wage-suffix">\uc6d0</span>
+        </div>
+        <div className="sum-sub">\uc2dc\uac04\ub2f9 \ub2e8\uac00</div>
+      </div>
+      <div className="sum-block" style={{gridColumn:'span 2'}}>
+        <div className="sum-label">\uc608\uc0c1 \uc2e4\uc218\ub839\uc561 (\uc138\ud6c4 3.3%)</div>
+        <div className="sum-value">
+          <span style={{color:'var(--muted-2)',fontWeight:500,marginRight:4}}>\u20a9</span>
+          <span className="num-mono">{formatWon(totals.netPay)}</span>
+        </div>
+        <div className="sum-sub">\uc138\uc804 \u20a9{formatWon(totals.grossPay)} \u2212 \uc138\uae08 \u20a9{formatWon(totals.tax)}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ShiftModal ─── */
+function ShiftModal({ ymd, existing, wage, onClose, onSave, onDelete }) {
+  const [start, setStart] = useState(existing?.start || '09:00');
+  const [end, setEnd] = useState(existing?.end || '18:00');
+  const [breakMin, setBreakMin] = useState(existing?.breakMin ?? 60);
+  const [saving, setSaving] = useState(false);
+
+  const dateObj = new Date(ymd.y, ymd.m, ymd.d);
+  const dow = KO_DOW[dateObj.getDay()];
+
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const workMin = Math.max(0, minutesBetween(start, end) - (Number(breakMin)||0));
+  const workH = Math.floor(workMin/60), workMM = workMin%60;
+  const grossPay = workMin/60*(wage||0);
+  const netPay = grossPay*(1-0.033);
+  const valid = workMin > 0;
+
+  const submit = async () => {
+    if (!valid || saving) return;
+    setSaving(true);
+    await onSave({ start, end, breakMin: Number(breakMin)||0 });
+    setSaving(false);
+  };
+
+  const handleDelete = async () => {
+    setSaving(true);
+    await onDelete();
+    setSaving(false);
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" role="dialog" aria-modal="true">
         <div className="modal-head">
           <div>
-            <div className="modal-date">Google API 키</div>
-            <div className="modal-sub" style={{ fontFamily: "inherit" }}>
-              Google Cloud Console에서 발급받은<br />OAuth 2.0 Client ID를 입력하세요.
-            </div>
+            <div className="modal-date">{ymd.m+1}\uc6d4 {ymd.d}\uc77c<span className="dow">{dow}\uc694\uc77c</span></div>
+            <div className="modal-sub">{ymd.y}.{pad2(ymd.m+1)}.{pad2(ymd.d)}</div>
           </div>
-          <button className="icon-btn" onClick={onCancel} aria-label="닫기">
-            <svg className="ic" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
-          </button>
+          <button className="icon-btn" onClick={onClose} aria-label="\ub2eb\uae30"><CloseIcon /></button>
         </div>
-        <div className="auth-field">
-          <div className="auth-field-label">OAuth Client ID</div>
-          <input
-            className="auth-input"
-            style={{ fontSize: 13 }}
-            type="text"
-            value={val}
-            onChange={(e) => setVal(e.target.value)}
-            placeholder="123456789-abc...apps.googleusercontent.com"
-            autoFocus
-          />
-          <div style={{ fontSize: 11, color: "var(--muted-2)", marginTop: 6, lineHeight: 1.5 }}>
-            ".apps.googleusercontent.com"으로 끝나는 형식이어야 합니다.<br/>
-            Google Cloud Console → Credentials → Authorized JavaScript origins에<br/>
-            <strong style={{color:"var(--ink)"}}>https://part-time-job-time-calculator.vercel.app</strong> 을 추가해주세요.
+        <div className="field-row">
+          <div className="field">
+            <div className="field-label">\ucd9c\uadfc</div>
+            <input className="time-input" type="time" value={start} onChange={e => setStart(e.target.value)} step="300" />
           </div>
+          <div className="field">
+            <div className="field-label">\ud1f4\uadfc</div>
+            <input className="time-input" type="time" value={end} onChange={e => setEnd(e.target.value)} step="300" />
+          </div>
+        </div>
+        <div className="field">
+          <div className="field-label">\ud734\uac8c\uc2dc\uac04 (\ubd84)</div>
+          <input className="break-input" type="number" min="0" step="5" value={breakMin}
+            onChange={e => setBreakMin(e.target.value === '' ? '' : Number(e.target.value))} placeholder="0" />
+        </div>
+        <div className="preview-card">
+          <div>
+            <div className="pv-label">\uadfc\ubb34 \uc2dc\uac04</div>
+            <div className="pv-pay">{wage > 0 ? `\u20a9${formatWon(netPay)} \uc2e4\uc218\ub839 (\uc138\ud6c4 3.3%)` : '\uc2dc\uae09\uc744 \uc785\ub825\ud558\uc138\uc694'}</div>
+          </div>
+          <div className="pv-val">{valid ? workMM===0 ? `${workH}h` : `${workH}h ${workMM}m` : '\u2014'}</div>
         </div>
         <div className="modal-actions">
-          <div></div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn ghost" onClick={onCancel}>취소</button>
-            <button className="btn" disabled={!valid} onClick={() => onConfirm(val.trim())} style={!valid ? { opacity: 0.4, cursor: "not-allowed" } : {}}>
-              연결하기
+          <div>{existing && <button className="btn danger" onClick={handleDelete} disabled={saving}>\uc0ad\uc81c</button>}</div>
+          <div style={{display:'flex',gap:10}}>
+            <button className="btn ghost" onClick={onClose} disabled={saving}>\ucde8\uc18c</button>
+            <button className="btn" onClick={submit} disabled={!valid || saving} style={(!valid||saving)?{opacity:0.4,cursor:'not-allowed'}:{}}>
+              {saving ? '\uc800\uc7a5 \uc911...' : existing ? '\uc218\uc815' : '\uc800\uc7a5'}
             </button>
           </div>
         </div>
@@ -1538,18 +1208,110 @@ function GoogleClientIdModal({ initial, onCancel, onConfirm }) {
   );
 }
 
-/* ---------- User chip / menu ---------- */
+/* ─── AuthScreen ─── */
+function AuthScreen() {
+  const [mode, setMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const toKo = msg => {
+    if (!msg) return '\uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4.';
+    if (msg.includes('Invalid login credentials')) return '\uc774\uba54\uc77c \ub610\ub294 \ube44\ubc00\ubc88\ud638\uac00 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.';
+    if (msg.includes('User already registered')) return '\uc774\ubbf8 \uac00\uc785\ub41c \uc774\uba54\uc77c\uc785\ub2c8\ub2e4.';
+    if (msg.includes('Password should be at least')) return '\ube44\ubc00\ubc88\ud638\ub294 6\uc790 \uc774\uc0c1\uc774\uc5b4\uc57c \ud569\ub2c8\ub2e4.';
+    if (msg.includes('Email not confirmed')) return '\uc774\uba54\uc77c \uc778\uc99d\uc774 \ud544\uc694\ud569\ub2c8\ub2e4. \uba54\uc77c\ud568\uc744 \ud655\uc778\ud574\uc8fc\uc138\uc694.';
+    if (msg.includes('Unable to validate email')) return '\uc62c\ubc14\ub978 \uc774\uba54\uc77c \uc8fc\uc18c\ub97c \uc785\ub825\ud574\uc8fc\uc138\uc694.';
+    return msg;
+  };
+
+  const submit = async e => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      if (mode === 'signup') {
+        const { error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name || email.split('@')[0] } } });
+        if (error) setError(toKo(error.message));
+        else setError('\uac00\uc785 \uc644\ub8cc! \uc774\uba54\uc77c \uc778\uc99d \ud6c4 \ub85c\uadf8\uc778\ud574\uc8fc\uc138\uc694.');
+      } else {
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) setError(toKo(error.message));
+      }
+    } catch { setError('\uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4.'); }
+    setLoading(false);
+  };
+
+  const signInWithGoogle = async () => {
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + window.location.pathname },
+    });
+    if (error) setError(toKo(error.message));
+  };
+
+  return (
+    <div className="auth-screen">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <div className="brand-mark">\u231f</div>
+          <div className="brand-name">\uc54c\ubc14 \uc2dc\uac04 \uacc4\uc0b0\uae30</div>
+        </div>
+        <div className="auth-title">{mode === 'login' ? '\ub2e4\uc2dc \ub9cc\ub098\uc11c \ubc18\uac00\uc6cc\uc694' : '\uc2dc\uc791\ud574\ubcfc\uae4c\uc694'}</div>
+        <div className="auth-sub">{mode === 'login' ? '\uc774\uba54\uc77c\ub85c \ub85c\uadf8\uc778\ud558\uac70\ub098 Google \uacc4\uc815\uc744 \uc0ac\uc6a9\ud558\uc138\uc694.' : '\uc774\uba54\uc77c\ub85c \uac00\uc785\ud558\uac70\ub098 Google \uacc4\uc815\uc744 \uc5f0\uacb0\ud558\uc138\uc694.'}</div>
+        <div className="auth-tabs">
+          <button className={'auth-tab '+(mode==='login'?'active':'')} onClick={() => { setMode('login'); setError(''); }}>\ub85c\uadf8\uc778</button>
+          <button className={'auth-tab '+(mode==='signup'?'active':'')} onClick={() => { setMode('signup'); setError(''); }}>\ud68c\uc6d0\uac00\uc785</button>
+        </div>
+        <form className="auth-form" onSubmit={submit}>
+          {mode === 'signup' && (
+            <div className="auth-field">
+              <div className="auth-field-label">\uc774\ub984</div>
+              <input className="auth-input" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="\ud64d\uae38\ub3d9" autoComplete="name" />
+            </div>
+          )}
+          <div className="auth-field">
+            <div className="auth-field-label">\uc774\uba54\uc77c</div>
+            <input className="auth-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" required />
+          </div>
+          <div className="auth-field">
+            <div className="auth-field-label">\ube44\ubc00\ubc88\ud638</div>
+            <input className="auth-input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" autoComplete={mode==='login'?'current-password':'new-password'} required />
+          </div>
+          {error && <div className={'auth-error'} style={error.includes('\uc644\ub8cc')?{background:'#f0fdf4',borderColor:'#bbf7d0',color:'#15803d'}:{}}>{error}</div>}
+          <button className="auth-submit" type="submit" disabled={loading}>
+            {loading ? '\ucc98\ub9ac \uc911...' : mode === 'login' ? '\ub85c\uadf8\uc778' : '\uac00\uc785\ud558\uae30'}
+          </button>
+        </form>
+        <div className="auth-divider">\ub610\ub294</div>
+        <button className="google-btn" onClick={signInWithGoogle}>
+          <svg className="google-icon" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Google \uacc4\uc815\uc73c\ub85c \uacc4\uc18d\ud558\uae30
+        </button>
+        <div className="auth-footnote">\uacc4\uc815 \uc815\ubcf4\ub294 Supabase\uc5d0 \uc548\uc804\ud558\uac8c \uc800\uc7a5\ub429\ub2c8\ub2e4.</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── UserChip ─── */
 function UserChip({ session, open, setOpen, onLogout }) {
   const ref = useRef(null);
-  const [showClientIdModal, setShowClientIdModal] = useState(false);
   useEffect(() => {
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    if (open) document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    const onDoc = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    if (open) document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
   }, [open, setOpen]);
-  const initial = (session.name || session.email || "?").trim()[0].toUpperCase();
+  const initial = (session.name || session.email || '?').trim()[0].toUpperCase();
   return (
-    <div ref={ref} style={{ position: "relative" }}>
+    <div ref={ref} style={{ position: 'relative' }}>
       <button className="user-chip" onClick={() => setOpen(!open)}>
         <div className="user-avatar">
           {session.picture ? <img src={session.picture} alt="" /> : initial}
@@ -1559,32 +1321,22 @@ function UserChip({ session, open, setOpen, onLogout }) {
       {open && (
         <div className="user-menu">
           <div className="um-header">
-            <div className="um-header-name">{session.name || "이름 없음"}</div>
+            <div className="um-header-name">{session.name || '\uc774\ub984 \uc5c6\uc74c'}</div>
             <div className="um-header-email">{session.email}</div>
           </div>
           <button className="um-item" onClick={() => setOpen(false)}>
-            계정: {session.provider === "google" ? "Google 연결됨" : "이메일"}
-          </button>
-          <button className="um-item" onClick={() => { setOpen(false); setShowClientIdModal(true); }}>
-            Google Client ID 설정
+            \uacc4\uc815: {session.provider === 'google' ? 'Google \uc5f0\uacb0\ub428' : '\uc774\uba54\uc77c'}
           </button>
           <button className="um-item danger" onClick={onLogout}>
-            로그아웃
+            \ub85c\uadf8\uc544\uc6c3
           </button>
         </div>
-      )}
-      {showClientIdModal && (
-        <GoogleClientIdModal
-          initial={localStorage.getItem(GOOGLE_CLIENT_KEY) || ""}
-          onCancel={() => setShowClientIdModal(false)}
-          onConfirm={(id) => { localStorage.setItem(GOOGLE_CLIENT_KEY, id); setShowClientIdModal(false); }}
-        />
       )}
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
 </script>
 </body>
 </html>
