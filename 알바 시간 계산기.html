@@ -840,6 +840,7 @@ const KO_DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const USERS_KEY = "ptj-users-v1";
 const SESSION_KEY = "ptj-session-v1";
 const GOOGLE_CLIENT_KEY = "ptj-google-client-id-v1";
+const GOOGLE_CLIENT_ID_DEFAULT = "511683958605-1pl4tntgu2p2ooab33cb0n52dmgsr1t2.apps.googleusercontent.com";
 
 async function hashPassword(pw) {
   const enc = new TextEncoder().encode(pw + "::ptj-salt");
@@ -1413,8 +1414,8 @@ function AuthScreen({ onAuth }) {
   };
 
   const handleGoogleClick = () => {
-    const stored = localStorage.getItem(GOOGLE_CLIENT_KEY);
-    if (stored) { startGoogle(stored); } else { setShowGoogleModal(true); }
+    const stored = localStorage.getItem(GOOGLE_CLIENT_KEY) || GOOGLE_CLIENT_ID_DEFAULT;
+    startGoogle(stored);
   };
 
   return (
@@ -1467,14 +1468,7 @@ function AuthScreen({ onAuth }) {
           </>}
         </button>
         <div id="g-btn-container" style={{width:"100%",marginTop:8,minHeight:0}}></div>
-        {localStorage.getItem(GOOGLE_CLIENT_KEY) && (
-          <div style={{marginTop:6,textAlign:"center"}}>
-            <button style={{background:"none",border:"none",fontSize:11,color:"var(--muted-2)",cursor:"pointer",textDecoration:"underline"}}
-              onClick={(e) => { e.stopPropagation(); setShowGoogleModal(true); }}>
-              Google Client ID 변경
-            </button>
-          </div>
-        )}
+
 
         <div className="auth-footnote">계정 정보는 이 브라우저에 안전하게 저장됩니다.</div>
       </div>
